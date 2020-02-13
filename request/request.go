@@ -41,8 +41,8 @@ func validate(target interface{}) []string {
 var _ Request = (*ArticleRequest)(nil)
 
 type ArticleRequest struct {
-	Title string `json:"title" validate:"required"`
-	Body  string `json:"body" validate:"required"`
+	Title string `json:"title" validate:"required,gte=5,lt=20"`
+	Body  string `json:"body" validate:"required,lte=100"`
 }
 
 func (req *ArticleRequest) Validate() []string {
