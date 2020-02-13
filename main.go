@@ -1,17 +1,59 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"net/http"
+
 	"github.com/labstack/echo/v4"
+	apperr "github.com/trewanek/request-validation/apperror"
 	"github.com/trewanek/request-validation/model"
 	"github.com/trewanek/request-validation/request"
 	"github.com/trewanek/request-validation/response"
-	"net/http"
 )
 
 func main() {
 	server := NewServer(echo.New())
+	server.HTTPErrorHandler = ErrorHandler
 	server.Route()
 	server.Logger.Fatal(server.Start(":1323"))
+}
+
+func ErrorHandler(err error, echo echo.Context) {
+	if errors.As(err, &apperr.ValidationErr{}) {
+		errorResponse(http.StatusBadRequest, "Invalid Request", err, echo)
+		return
+	}
+	errorResponse(http.StatusInternalServerError, "Unknown", err, echo)
+}
+
+func errorResponse(code int, status string, err error, echo echo.Context) {
+	errs := make([]string, 0, 0)
+	ve := func(err error) *apperr.ValidationErr {
+		for err != nil {
+			if validationErr, ok := err.(apperr.ValidationErr); ok {
+				return &validationErr
+			}
+			err = errors.Unwrap(err)
+			continue
+		}
+		return nil
+	}(err)
+
+	if ve != nil {
+		errs = ve.ValidationErrs()
+	} else {
+		errs = append(errs, err.Error())
+	}
+
+	e := echo.JSON(code, response.HttpResponse{
+		Code:   code,
+		Status: status,
+		Errors: errs,
+	})
+	if err != nil {
+		echo.Logger().Errorf("err: ", e)
+	}
 }
 
 type Server struct {
@@ -48,16 +90,15 @@ func CreateArticleHandler(c echo.Context) error {
 
 	errs := req.Validate()
 	if errs != nil {
-		return c.JSON(
-			http.StatusBadRequest,
-			response.HttpResponse{
-				Code:     http.StatusBadRequest,
-				Status:   "Invalid Request",
-				Response: nil,
-				Errors:   errs,
-			},
+		return fmt.Errorf(
+			"double wrapped err: %w",
+			fmt.Errorf(
+				"wrapped err: %w",
+				apperr.NewValidationErr(errs),
+			),
 		)
 	}
+
 	return c.JSON(
 		http.StatusOK,
 		response.HttpResponse{
