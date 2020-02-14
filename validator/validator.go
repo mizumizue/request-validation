@@ -8,7 +8,7 @@ import (
 )
 
 type Validator struct {
-	*validator.Validate
+	validator *validator.Validate
 	ut.Translator
 }
 
@@ -52,6 +52,11 @@ func NewValidator() *Validator {
 		validate,
 		ja,
 	}
+}
+
+func (v *Validator) Validate(s interface{}) error {
+	// TODO Fieldに配列を含む構造体を渡された場合のValidation
+	return v.validator.Struct(s)
 }
 
 func transFunc(ut ut.Translator, fe validator.FieldError) string {

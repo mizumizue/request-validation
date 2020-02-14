@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -10,49 +9,34 @@ import (
 	"github.com/trewanek/request-validation/model"
 	"github.com/trewanek/request-validation/request"
 	"github.com/trewanek/request-validation/response"
+	"github.com/trewanek/request-validation/validator"
 )
 
 func main() {
 	server := NewServer(echo.New())
 	server.HTTPErrorHandler = ErrorHandler
+	server.Validator = validator.NewValidator()
 	server.Route()
 	server.Logger.Fatal(server.Start(":1323"))
 }
 
 func ErrorHandler(err error, echo echo.Context) {
 	if errors.As(err, &apperr.ValidationErr{}) {
-		errorResponse(http.StatusBadRequest, "Invalid Request", err, echo)
+		v := echo.Echo().Validator.(*validator.Validator)
+		errorResponse(echo, http.StatusBadRequest, "Invalid Request", v.ValidationStrings(errors.Unwrap(err))...)
 		return
 	}
-	errorResponse(http.StatusInternalServerError, "Unknown", err, echo)
+	errorResponse(echo, http.StatusInternalServerError, "Unknown", err.Error())
 }
 
-func errorResponse(code int, status string, err error, echo echo.Context) {
-	errs := make([]string, 0, 0)
-	ve := func(err error) *apperr.ValidationErr {
-		for err != nil {
-			if validationErr, ok := err.(apperr.ValidationErr); ok {
-				return &validationErr
-			}
-			err = errors.Unwrap(err)
-			continue
-		}
-		return nil
-	}(err)
-
-	if ve != nil {
-		errs = ve.ValidationErrs()
-	} else {
-		errs = append(errs, err.Error())
-	}
-
-	e := echo.JSON(code, response.HttpResponse{
+func errorResponse(echo echo.Context, code int, status string, errStrings ...string) {
+	err := echo.JSON(code, response.HttpResponse{
 		Code:   code,
 		Status: status,
-		Errors: errs,
+		Errors: errStrings,
 	})
 	if err != nil {
-		echo.Logger().Errorf("err: ", e)
+		echo.Logger().Errorf("err: ", err)
 	}
 }
 
@@ -74,7 +58,12 @@ func (server *Server) Route() {
 }
 
 func FetchArticlesHandler(c echo.Context) error {
-	panic("impl")
+	req := new(request.SearchArticleRequest)
+	err := c.Bind(req)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, "ok")
 }
 
 func FindArticleHandler(c echo.Context) error {
@@ -83,20 +72,11 @@ func FindArticleHandler(c echo.Context) error {
 
 func CreateArticleHandler(c echo.Context) error {
 	req := new(request.CreateArticleRequest)
-	err := c.Bind(req)
-	if err != nil {
+	if err := c.Bind(req); err != nil {
 		return err
 	}
-
-	errs := req.Validate()
-	if errs != nil {
-		return fmt.Errorf(
-			"double wrapped err: %w",
-			fmt.Errorf(
-				"wrapped err: %w",
-				apperr.NewValidationErr(errs),
-			),
-		)
+	if err := c.Validate(req); err != nil {
+		return apperr.NewValidationErr(err)
 	}
 
 	return c.JSON(

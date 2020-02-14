@@ -1,19 +1,17 @@
 package apperr
 
-import "strings"
-
 type ValidationErr struct {
-	errs []string
+	Err error
 }
 
-func NewValidationErr(errs []string) ValidationErr {
-	return ValidationErr{errs: errs}
+func NewValidationErr(err error) ValidationErr {
+	return ValidationErr{Err: err}
 }
 
 func (e ValidationErr) Error() string {
-	return strings.Join(e.errs, "\n")
+	return e.Err.Error()
 }
 
-func (e ValidationErr) ValidationErrs() []string {
-	return e.errs
+func (e ValidationErr) Unwrap() error {
+	return e.Err
 }
